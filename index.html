@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title></title>
+    <style>
+        body{
+            padding: 8px;
+            margin:0;
+        }
+        canvas {
+            border: 1px solid black;
+        }
+        h1, input {
+            display: inline-block;
+            vertical-align: middle;
+        }
+        h1{
+            margin-right:40px;
+            font-size: 20px;
+        }
+        input{
+            width:40px;
+        }
+        .container {
+            display: flex;
+            gap: 10px; /* Space between columns */
+        }
+
+        .column {
+            flex: 1; /* Each column takes equal space */
+            padding: 0;
+        }
+        p{
+            margin:0;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.5.0/math.min.js"></script>
+
+</head>
+<body>
+    <h1>What point maximizes the product of distances in a △?</h1>
+    <label>Coordinates: x1</label>
+    <input type="text" id="x1">
+    <label>y1</label>
+    <input type="text" id="y1">
+    <label>x2</label>
+    <input type="text" id="x2">
+    <label>y2</label>
+    <input type="text" id="y2">
+    <label>x3</label>
+    <input type="text" id="x3">
+    <label>y3</label>
+    <input type="text" id="y3">
+    <button onclick="submitvalues()">Submit</button>
+    <div class="container">
+        <div class="column">
+            <canvas id="canvas" width=650 height=650></canvas>
+        </div>
+        <div class="column">
+            <br>
+            <p>WLOG transform the points such that two of them are (0,0) and (2,0) and that is the longest edge.</p>
+            <br>
+            <button onclick="equilateral()">RQ2: Equilateral Triangle</button>
+            <button onclick="isosceles()">RQ3: Isosceles Triangle</button>
+            <button onclick="general()">RQ4: General Triangle</button>
+        
+            <p id="content"></p>
+            
+            <canvas id="transformedcanvas" width=600 height=430></canvas>
+        </div>
+    </div>
+    
+
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const transformedcanvas = document.getElementById("transformedcanvas")
+        const tctx = transformedcanvas.getContext("2d");
+
+        let points = [{ x: 99, y: 99 }, { x: 301, y: 199 }, { x: 500, y: 101 }];
+        // these are the points after affine transformatioin
+        let transformedpoints=[{ x: 100, y: 100 }, { x: 300, y: 200 }, { x: 500, y: 100 }]
+        let draggingPoint = null;
+        let bv = {x: 1, y: 0}
+        let bvy = {x: 0, y: 1}
+        let maxpoint={x:0, y:0}
+        let originalmaxpoint={x:0, y:0}
+        let isoscelesmode=false;
+
+        function solveEquation() {
+            let x = parseFloat(transformedpoints[2].x);
+            let y = parseFloat(transformedpoints[2].y);
+
+            // Define the cubic equation coefficients
+            let A = -3;
+            let B = (4 + 5 * x);
+            let C = -2 * (3 * x + x ** 2 + y ** 2);
+            let D = 2 * (x ** 2 + y ** 2);
+
+            // Find the roots using math.js
+            let solutions = math.polynomialRoot(D, C, B, A);
+            let realSolutions = solutions.filter(root => {
+                let isReal = typeof root === "number" || (typeof root === "object" && root.im === 0);
+                let value = typeof root === "number" ? root : root.re; // Extract real part
+                return isReal && value <= 1.00001;
+            });
+
+
+            console.log("solutions should exist: ", solutions);
+            console.log("Realsolutions: ", realSolutions);
+
+            maxpoint.x=realSolutions[0]
+            // if(realSolutions.length>1)alert("bruh");
+        }
+        function side(i){
+            let val = Math.sqrt((points[i].x - points[(i+1) % points.length].x)**2 + (points[i].y - points[(i+1) % points.length].y)**2)
+            console.log("side called val is ", val)
+
+            return val
+        }
+        function transform(point){
+            // Extract global origin
+            let h = points[0].x;
+            let k = points[0].y;
+
+            // Basis vectors
+            let a = bv.x, b = bv.y;    // New x-axis
+            
+            let c = -bv.y, d = bv.x;   // Perpendicular new y-axis
+            bvy.x=-bv.y, bvy.y=bv.x;
+            // Apply transformation
+            let yNew=0, xNew=0;
+            if (bv.y>-0.0001 && bv.y <0.0001){
+                xNew=Math.abs((point.x-h)/bv.x), yNew=Math.abs((point.y-k)/bv.x);
+            }
+            else{
+                yNew = ((point.x-h) - a / b * (point.y-k)) / (c - a * d / b)
+                xNew = ((point.x-h) - c * yNew) / a;
+            }
+
+            console.log(xNew, yNew)
+            if (yNew < -0.001){
+                c = bv.y, d = -bv.x;   // Perpendicular new y-axis
+                bvy.x=bv.y, bvy.y=-bv.x;
+                // Apply transformation
+                if(bv.y>-0.0001 && bv.y<0.0001){
+                    xNew=Math.abs((point.x-h)/bv.x), yNew=Math.abs((point.y-k)/-bv.x);
+                }
+                else{
+                    yNew = ((point.x-h) - a / b * (point.y-k)) / (c - a * d / b)
+                    xNew = ((point.x-h) - c * yNew) / a;
+                }
+            }
+            return { x: xNew, y: yNew };
+        }
+        function reversetransform(point){
+            let ox=point.x*bv.x+point.y*bvy.x+points[0].x;
+            let oy=point.x*bv.y+point.y*bvy.y+points[0].y;
+            return {x:ox, y:oy}
+        }
+        function under(x){
+        }
+        function bruteforce(){
+            for(let i=0; i<=maxwidth;i++){
+                for(let j=0;j<=maxwidth;j++){
+
+                }
+            }
+        }
+        function draw() {
+            // update the input fields
+            document.getElementById("x1").value=points[0].x
+            document.getElementById("y1").value=points[0].y
+            document.getElementById("x2").value=points[1].x
+            document.getElementById("y2").value=points[1].y
+            document.getElementById("x3").value=points[2].x
+            document.getElementById("y3").value=points[2].y
+
+            // ordering points
+            if (side(1) > side(0)) [points[0], points[2]] = [points[2], points[0]];
+            if (side(1) > side(2)) [points[0], points[1]] = [points[1], points[0]];
+            if (side(2) > side(0)) [points[1], points[2]] = [points[2], points[1]];
+            // calculate basic vector
+            bv.x = (points[1].x - points[0].x)/2
+            bv.y = (points[1].y - points[0].y)/2
+            console.log("basic x unit vector ", bv.x, bv.y)
+            // calculate transformed points
+            transformedpoints.length=0
+            for (let i=0;i<points.length;i++){
+                transformedpoints.push(transform(points[i]))
+            }
+
+            
+            solveEquation();
+            console.log("p = ", maxpoint.x)
+            originalmaxpoint=reversetransform(maxpoint)
+
+            // TRANSFORMED CANVAS ------------------------------
+            let scale=200, offset=transformedcanvas.height-50;
+            tctx.clearRect(0, 0, transformedcanvas.width, transformedcanvas.height);
+            
+            // label canvas
+            tctx.fillStyle = "black";
+            tctx.font = "14px Arial";
+            tctx.fillText(`Transformed points`, 20, 20);
+
+            // Draw lines between points
+            tctx.beginPath();
+            tctx.moveTo(transformedpoints[0].x * scale, offset-transformedpoints[0].y * scale);
+            for (let i = 1; i < transformedpoints.length; i++) {
+                tctx.lineTo(transformedpoints[i].x * scale, offset-transformedpoints[i].y * scale);
+            }
+            tctx.lineTo(transformedpoints[0].x * scale, offset-transformedpoints[0].y * scale);
+            tctx.stroke();
+            // Draw points
+            transformedpoints.forEach(p => {
+
+                tctx.beginPath();
+                tctx.arc(p.x*scale,  offset - p.y *scale, 8, 0 , Math.PI * 2);
+                tctx.fillStyle = "blue";
+                tctx.fill();
+                tctx.strokeStyle = "black";
+                tctx.stroke();
+
+                tctx.fillStyle = "black";
+                tctx.font = "14px Arial";
+                tctx.fillText(`(${p.x.toFixed(3)}, ${p.y.toFixed(3)})`, p.x*scale + 10, offset - p.y*scale - 10);
+            });
+
+            // label maxpoint
+            if(typeof maxpoint.x === "number"){
+                tctx.beginPath();
+                tctx.arc(maxpoint.x*scale, offset-maxpoint.y *scale, 8, 0, Math.PI * 2);
+                tctx.fillStyle = "red";
+                tctx.fill();
+                tctx.strokeStyle = "black";
+                tctx.stroke();
+                tctx.fillStyle = "black";
+                tctx.font = "14px Arial";
+                tctx.fillText(`(${maxpoint.x.toFixed(3)}, ${maxpoint.y.toFixed(3)})`, maxpoint.x*scale + 10, offset-maxpoint.y*scale - 10);
+            }
+
+            // DEFAULT INPUT CANVAS rendering code-----------------
+            let defaultoffset=canvas.height;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // label canvas
+            ctx.fillStyle = "black";
+            ctx.font = "14px Arial";
+            ctx.fillText(`Original points (draggable)`, 20, 20);
+
+            
+            // Draw lines between points
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, defaultoffset-points[0].y);
+            for (let i = 1; i < points.length; i++) {
+                ctx.lineTo(points[i].x, defaultoffset-points[i].y);
+            }
+            ctx.lineTo(points[0].x, defaultoffset-points[0].y);
+            ctx.stroke();
+            // Draw points
+            points.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, defaultoffset-p.y, 8, 0, Math.PI * 2);
+                ctx.fillStyle = "blue";
+                ctx.fill();
+                ctx.strokeStyle = "black";
+                ctx.stroke();
+
+                ctx.fillStyle = "black";
+                ctx.font = "14px Arial";
+                ctx.fillText(`(${p.x}, ${p.y})`, p.x + 10, defaultoffset-p.y - 10);
+            });
+            // label original maxpoint
+            if(typeof originalmaxpoint.x === "number"){
+                ctx.beginPath();
+                ctx.arc(originalmaxpoint.x, defaultoffset-originalmaxpoint.y, 8, 0, Math.PI * 2);
+                ctx.fillStyle = "red";
+                ctx.fill();
+                ctx.strokeStyle = "black";
+                ctx.stroke();
+
+                ctx.fillStyle = "black";
+                ctx.font = "14px Arial";
+                ctx.fillText(`(${originalmaxpoint.x.toFixed(3)}, ${originalmaxpoint.y.toFixed(3)})`, originalmaxpoint.x + 10,defaultoffset- originalmaxpoint.y - 10);
+            }
+
+        }
+        function equilateral(){
+            document.getElementById("content").innerHTML='<h2>Equilateral Triangle</h2>The max point lies on the midpoint of any side.'
+
+            document.getElementById("x1").value=0
+            document.getElementById("y1").value=50
+            document.getElementById("x2").value=200
+            document.getElementById("y2").value=396.41016151377545
+            document.getElementById("x3").value=400
+            document.getElementById("y3").value=50
+            submitvalues();
+        }
+        function isosceles(){
+            isoscelesmode=true;
+            document.getElementById("content").innerHTML='<h2>Isosceles Triangle</h2>The location of the max point depends on the height of the triangle.'
+
+            document.getElementById("x1").value=0
+            document.getElementById("y1").value=50
+            document.getElementById("x2").value=200
+            document.getElementById("y2").value=500
+            document.getElementById("x3").value=400
+            document.getElementById("y3").value=50
+            submitvalues();
+        }
+        function general(){
+            document.getElementById("content").innerHTML='<h2>General Triangle</h2> The maxpoint can be found as the solution of <img style="width: 425px;" src="eqn.png">'
+            isoscelesmode=false;
+        }
+        function submitvalues(){
+            points[0].x=Number(document.getElementById("x1").value)
+            points[0].y=Number(document.getElementById("y1").value)
+            points[1].x=Number(document.getElementById("x2").value)
+            points[1].y=Number(document.getElementById("y2").value)
+            points[2].x=Number(document.getElementById("x3").value)
+            points[2].y=Number(document.getElementById("y3").value)
+
+            draw();
+        }
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+        }
+        function findPoint(mouse) {
+            return points.find(p => Math.hypot(p.x - mouse.x, p.y - (canvas.height-mouse.y)) < 10);
+        }
+        canvas.addEventListener("mousedown", (evt) => {
+            const mouse = getMousePos(evt);
+            draggingPoint = findPoint(mouse);
+        });
+
+        canvas.addEventListener("mousemove", (evt) => {
+            if (draggingPoint) {
+                const mouse = getMousePos(evt);
+                if(!isoscelesmode) draggingPoint.x = mouse.x;
+                draggingPoint.y = canvas.height-mouse.y;
+
+                draw();
+            }
+        });
+
+        canvas.addEventListener("mouseup", () => {
+            draggingPoint = null;
+        });
+
+        draw();
+
+
+    </script>
+</body>
+</html>
